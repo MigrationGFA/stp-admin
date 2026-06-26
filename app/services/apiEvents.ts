@@ -56,9 +56,10 @@ function normalizeEventStatus(rawStatus: unknown): BackofficeEvent["eventStatus"
 }
 
 function normalizeEvent(event: any, fallbackStatus?: unknown): BackofficeEvent {
+  const type = String(event?.type ?? "online").toLowerCase();
   return {
     eventId: event?.eventId ?? event?.id ?? "",
-    type: String(event?.type ?? "online").toLowerCase(),
+    type,
     format: event?.format ?? "",
     name: event?.name ?? "",
     timeZone: event?.timeZone ?? "UTC",
@@ -73,6 +74,7 @@ function normalizeEvent(event: any, fallbackStatus?: unknown): BackofficeEvent {
     updatedAt: event?.updatedAt ?? "",
     coverImageUrl: event?.coverImageUrl ?? event?.coverImagePath ?? "",
     eventStatus: normalizeEventStatus(event?.eventStatus ?? event?.status ?? fallbackStatus),
+    visibility: event?.visibility ?? "PUBLIC",
   };
 }
 
@@ -125,6 +127,7 @@ export async function createEvent(
   const formData = new FormData();
   formData.append("type", payload.type);
   formData.append("name", payload.name);
+  formData.append("format", "json");
   formData.append("timeZone", payload.timeZone);
   formData.append("startTime", payload.startTime);
   formData.append("endTime", payload.endTime);
@@ -164,4 +167,14 @@ export async function approveEvent(eventId: string): Promise<void> {
 
 export async function declineEvent(eventId: string, reason?: string): Promise<void> {
   await moderateEvent(eventId, { action: "reject", reason });
+}
+
+export async function updateEventVisibility(
+  eventId: string,
+  visibility: "PUBLIC" | "CONNECTIONS_ONLY"
+): Promise<{ status: boolean; message: string; data: { visibility: string } }> {
+  return await apiRequest(API_ENDPOINTS.backoffice.updateEventVisibility(eventId), {
+    method: "PATCH",
+    body: JSON.stringify({ visibility }),
+  });
 }

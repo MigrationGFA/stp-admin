@@ -20,6 +20,7 @@ export interface Event {
   type: string;
   format: string;
   eventStatus?: "approved" | "pending" | "rejected";
+  visibility?: "PUBLIC" | "CONNECTIONS_ONLY";
   name: string;
   timeZone: string;
   startTime: string;

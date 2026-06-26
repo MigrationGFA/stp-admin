@@ -34,6 +34,7 @@ export const API_ENDPOINTS = {
     events: "/backoffice/events",
     pendingEvents: "/backoffice/events/pending",
     approveEvent: (eventId: string) => `/backoffice/events/${eventId}/approve`,
+    updateEventVisibility: (eventId: string) => `/backoffice/events/${eventId}/visibility`,
     pendingDealRooms: "/backoffice/dealrooms/pending",
     approveDealRoom: (roomId: string) => `/dealrooms/${roomId}/approve`,
     dealRoomLogs: "/backoffice/dealrooms/logs",

@@ -29,9 +29,11 @@ export function useEvents() {
         merged.set(event.eventId, { ...event, eventStatus: "pending" });
       });
 
-      const events = Array.from(merged.values()).sort(
-        (a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime()
-      );
+      const events = Array.from(merged.values()).sort((a, b) => {
+        const timeA = new Date(a.createdAt || a.startTime).getTime() || 0;
+        const timeB = new Date(b.createdAt || b.startTime).getTime() || 0;
+        return timeB - timeA;
+      });
 
       return {
         events,

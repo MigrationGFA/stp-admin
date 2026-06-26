@@ -67,6 +67,7 @@ import {
   approveEvent,
   declineEvent,
   fetchEventById,
+  updateEventVisibility,
   type BackofficeEvent,
 } from "@/services/apiEvents";
 import { TimePicker } from "@/components/ui/time-picker";
@@ -162,6 +163,21 @@ export default function ContentEngagementPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['events'] });
       toast.success('Event declined');
+    },
+  });
+
+  const updateEventVisibilityMutation = useMutation({
+    mutationFn: ({ eventId, visibility }: { eventId: string; visibility: "PUBLIC" | "CONNECTIONS_ONLY" }) =>
+      updateEventVisibility(eventId, visibility),
+    onSuccess: (response, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['events'] });
+      if (selectedEvent && selectedEvent.eventId === variables.eventId) {
+        setSelectedEvent((prev) => prev ? { ...prev, visibility: variables.visibility } : null);
+      }
+      toast.success(response.message || 'Event visibility updated');
+    },
+    onError: (error: any) => {
+      toast.error(error?.message || 'Failed to update event visibility');
     },
   });
 
@@ -280,6 +296,7 @@ export default function ContentEngagementPage() {
     timeMinute: "",
     timePeriod: "AM",
     location: "",
+    venue: "",
     description: "",
     visibility: "all",
     rsvpLimit: "",
@@ -371,13 +388,12 @@ export default function ContentEngagementPage() {
         startTime,
         // TODO: No endTime field in UI — defaults to startTime
         endTime: startTime,
-        address: eventForm.type === "physical" ? eventForm.location : "",
+        address: eventForm.type === "in-person" ? eventForm.location : "",
         type: eventForm.type,
         timeZone: "UTC",
         description: eventForm.description,
         externalLink: eventForm.type === "online" ? eventForm.location : "",
-        // TODO: No "venue" field in UI — sending empty string
-        venue: "",
+        venue: eventForm.type === "in-person" ? eventForm.venue : "",
         coverImage: coverImageRef.current?.files?.[0],
       });
       toast.success(result.message || "Event created successfully!");
@@ -391,6 +407,7 @@ export default function ContentEngagementPage() {
         timeMinute: "",
         timePeriod: "AM",
         location: "",
+        venue: "",
         description: "",
         visibility: "all",
         rsvpLimit: "",
@@ -657,7 +674,7 @@ export default function ContentEngagementPage() {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="online">Online</SelectItem>
-                      <SelectItem value="physical">Physical</SelectItem>
+                      <SelectItem value="in-person">In-Person</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -712,7 +729,7 @@ export default function ContentEngagementPage() {
                     placeholder={
                       eventForm.type === "online"
                         ? "https://zoom.us/j/..."
-                        : "Physical address"
+                        : "In-person address"
                     }
                     value={eventForm.location}
                     onChange={(e) =>
@@ -720,6 +737,18 @@ export default function ContentEngagementPage() {
                     }
                   />
                 </div>
+                {eventForm.type === "in-person" && (
+                  <div className="col-span-2 space-y-2">
+                    <Label>Venue</Label>
+                    <Input
+                      placeholder="e.g. Grand Ballroom, Hall A"
+                      value={eventForm.venue}
+                      onChange={(e) =>
+                        handleEventChange("venue", e.target.value)
+                      }
+                    />
+                  </div>
+                )}
                 <div className="col-span-2 space-y-2">
                   <Label>Description</Label>
                   <Textarea
@@ -1292,7 +1321,7 @@ export default function ContentEngagementPage() {
                 <SelectContent>
                   <SelectItem value="all">All Types</SelectItem>
                   <SelectItem value="online">Online</SelectItem>
-                  <SelectItem value="physical">Physical</SelectItem>
+                  <SelectItem value="in-person">In-Person</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -1349,13 +1378,18 @@ export default function ContentEngagementPage() {
                           <CalendarIcon className="h-8 w-8 text-slate-400" />
                         </div>
                       )}
-                      <div className="absolute top-2 right-2">
+                      <div className="absolute top-2 right-2 flex flex-col gap-1 items-end">
                         <Badge 
                           variant={event.eventStatus === 'pending' ? "secondary" : "default"}
                           className={event.eventStatus === 'pending' ? 'bg-amber-100 text-amber-800 hover:bg-amber-100 border-amber-200' : 'bg-green-100 text-green-800 hover:bg-green-100 border-green-200'}
                         >
                           {event.eventStatus === 'pending' ? 'Pending Validation' : 'Approved'}
                         </Badge>
+                        {event.visibility && (
+                          <Badge variant="outline" className="bg-white/95 text-slate-700 border-slate-200 shadow-sm">
+                            {event.visibility === "PUBLIC" ? "Public" : "Connections Only"}
+                          </Badge>
+                        )}
                       </div>
                     </div>
                     <CardHeader className="p-4">
@@ -1964,7 +1998,28 @@ export default function ContentEngagementPage() {
                  value={selectedEvent.address || selectedEvent.venue || selectedEvent.externalLink || "-"}
                />
                <DetailItem label="Time Zone" value={selectedEvent.timeZone || "-"} />
-             </div>
+                <div className="flex flex-col gap-1.5">
+                  <span className="text-xs font-semibold uppercase text-muted-foreground">Visibility</span>
+                  <Select
+                    value={selectedEvent.visibility || "PUBLIC"}
+                    onValueChange={(value: "PUBLIC" | "CONNECTIONS_ONLY") => {
+                      updateEventVisibilityMutation.mutate({
+                        eventId: selectedEvent.eventId,
+                        visibility: value,
+                      });
+                    }}
+                    disabled={updateEventVisibilityMutation.isPending}
+                  >
+                    <SelectTrigger className="h-9 w-[180px] text-sm">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="PUBLIC">Public</SelectItem>
+                      <SelectItem value="CONNECTIONS_ONLY">Connections Only</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
              <div>
                <p className="text-xs font-semibold uppercase text-muted-foreground">Description</p>
                <p className="mt-1 text-sm">{selectedEvent.description || "No description provided."}</p>
