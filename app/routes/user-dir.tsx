@@ -966,7 +966,7 @@ function StatCard({ title, value, icon, sub, color = "text-muted-foreground", lo
   return (
     <Card>
       <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-2">
-        <CardTitle className="text-sm font-medium leading-normal">{title}</CardTitle>
+        <CardTitle className="text-sm font-medium leading-normal min-h-[40px]">{title}</CardTitle>
         <div className={cn("flex-shrink-0", color)}>
           {React.cloneElement(icon, { size: 16 })}
         </div>

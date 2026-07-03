@@ -45,6 +45,16 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogCancel,
+  AlertDialogAction,
+} from "@/components/ui/alert-dialog";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import {
@@ -68,6 +78,7 @@ import {
   declineEvent,
   fetchEventById,
   updateEventVisibility,
+  deleteEvent,
   type BackofficeEvent,
 } from "@/services/apiEvents";
 import { TimePicker } from "@/components/ui/time-picker";
@@ -178,6 +189,18 @@ export default function ContentEngagementPage() {
     },
     onError: (error: any) => {
       toast.error(error?.message || 'Failed to update event visibility');
+    },
+  });
+
+  const deleteEventMutation = useMutation({
+    mutationFn: deleteEvent,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['events'] });
+      toast.success('Event deleted successfully');
+      setEventDetailsOpen(false);
+    },
+    onError: (error: any) => {
+      toast.error(error?.message || 'Failed to delete event');
     },
   });
 
@@ -335,11 +358,12 @@ export default function ContentEngagementPage() {
    const [newsDetailsDialogOpen, setNewsDetailsDialogOpen] = useState(false);
 
    // Analytics dialog
-   const [analyticsDialogOpen, setAnalyticsDialogOpen] = useState(false);
-   const [eventDetailsOpen, setEventDetailsOpen] = useState(false);
-   const [selectedEvent, setSelectedEvent] = useState<BackofficeEvent | null>(null);
-   const [eventDetailsLoading, setEventDetailsLoading] = useState(false);
-   const [resourceDialogOpen, setResourceDialogOpen] = useState(false);
+    const [analyticsDialogOpen, setAnalyticsDialogOpen] = useState(false);
+    const [eventDetailsOpen, setEventDetailsOpen] = useState(false);
+    const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+    const [selectedEvent, setSelectedEvent] = useState<BackofficeEvent | null>(null);
+    const [eventDetailsLoading, setEventDetailsLoading] = useState(false);
+    const [resourceDialogOpen, setResourceDialogOpen] = useState(false);
    const [resourceForm, setResourceForm] = useState({
      title: "",
      category: "",
@@ -620,7 +644,7 @@ export default function ContentEngagementPage() {
                 <div className="space-y-2">
                   <Label>Post Content</Label>
                   <Textarea
-                    className="min-h-[150px]"
+                    className="min-h-[120px] max-h-[160px] resize-none"
                     placeholder="Start writing the story..."
                     value={newsForm.body}
                     onChange={(e) => setNewsForm(prev => ({ ...prev, body: e.target.value }))}
@@ -753,7 +777,7 @@ export default function ContentEngagementPage() {
                   <Label>Description</Label>
                   <Textarea
                     placeholder="Describe your event..."
-                    className="min-h-[80px]"
+                    className="min-h-[80px] max-h-[100px] resize-none"
                     value={eventForm.description}
                     onChange={(e) =>
                       handleEventChange("description", e.target.value)
@@ -867,7 +891,7 @@ export default function ContentEngagementPage() {
                <div className="space-y-2">
                  <Label>Post Content</Label>
                  <Textarea
-                   className="min-h-[150px]"
+                   className="min-h-[120px] max-h-[160px] resize-none"
                    placeholder="Start writing the story..."
                    value={editNewsForm.body}
                    onChange={(e) => setEditNewsForm(prev => ({ ...prev, body: e.target.value }))}
@@ -1028,10 +1052,12 @@ export default function ContentEngagementPage() {
                    <Label>Time</Label>
                    <p className="text-muted-foreground">{selectedPost.time}</p>
                  </div>
-                 <div className="space-y-2">
-                   <Label>Content</Label>
-                   <p className="text-muted-foreground">{selectedPost.content}</p>
-                 </div>
+                  <div className="space-y-2">
+                    <Label>Content</Label>
+                    <div className="max-h-[250px] overflow-y-auto no-scrollbar border rounded-md p-3 bg-muted/30">
+                      <p className="text-muted-foreground text-sm whitespace-pre-wrap">{selectedPost.content}</p>
+                    </div>
+                  </div>
                  {selectedPost.status === "flagged" && (
                    <div className="space-y-2">
                      <Label>Status</Label>
@@ -1381,9 +1407,15 @@ export default function ContentEngagementPage() {
                       <div className="absolute top-2 right-2 flex flex-col gap-1 items-end">
                         <Badge 
                           variant={event.eventStatus === 'pending' ? "secondary" : "default"}
-                          className={event.eventStatus === 'pending' ? 'bg-amber-100 text-amber-800 hover:bg-amber-100 border-amber-200' : 'bg-green-100 text-green-800 hover:bg-green-100 border-green-200'}
+                          className={
+                            event.eventStatus === 'pending' 
+                              ? 'bg-amber-100 text-amber-800 hover:bg-amber-100 border-amber-200' 
+                              : event.rawStatus === 'REJECTED'
+                                ? 'bg-red-100 text-red-800 hover:bg-red-100 border-red-200'
+                                : 'bg-green-100 text-green-800 hover:bg-green-100 border-green-200'
+                          }
                         >
-                          {event.eventStatus === 'pending' ? 'Pending Validation' : 'Approved'}
+                          {event.rawStatus || (event.eventStatus === 'pending' ? 'PENDING_APPROVAL' : 'ACTIVE')}
                         </Badge>
                         {event.visibility && (
                           <Badge variant="outline" className="bg-white/95 text-slate-700 border-slate-200 shadow-sm">
@@ -1399,6 +1431,7 @@ export default function ContentEngagementPage() {
                       <CardDescription className="line-clamp-1">
                         {format(new Date(event.startTime), "MMM dd")}
                         {event.address ? ` • ${event.address}` : event.venue ? ` • ${event.venue}` : ""}
+                        {` • ${event.attendeeCount ?? 0} ${event.attendeeCount === 1 ? 'Attendee' : 'Attendees'}`}
                       </CardDescription>
                       <Button
                         size="sm"
@@ -1535,17 +1568,33 @@ export default function ContentEngagementPage() {
                               <div className="p-4 space-y-3">
                                 <div>
                                   <div className="flex items-center justify-between mb-1">
-                                    <Badge variant={e.eventStatus === 'pending' ? "secondary" : "default"} className={e.eventStatus === 'pending' ? 'bg-amber-100 text-amber-800 hover:bg-amber-100' : ''}>
-                                      {e.eventStatus === 'pending' ? 'Pending' : 'Approved'}
+                                    <Badge 
+                                      variant={e.eventStatus === 'pending' ? "secondary" : "default"} 
+                                      className={
+                                        e.eventStatus === 'pending' 
+                                          ? 'bg-amber-100 text-amber-800 hover:bg-amber-100 border-amber-200' 
+                                          : e.rawStatus === 'REJECTED'
+                                            ? 'bg-red-100 text-red-800 hover:bg-red-100 border-red-200'
+                                            : 'bg-green-100 text-green-800 hover:bg-green-100 border-green-200'
+                                      }
+                                    >
+                                      {e.rawStatus || (e.eventStatus === 'pending' ? 'PENDING_APPROVAL' : 'ACTIVE')}
                                     </Badge>
                                     <span className="text-[10px] text-muted-foreground uppercase">{format(new Date(e.startTime), 'h:mm a')}</span>
                                   </div>
                                   <h4 className="font-bold leading-tight mt-2">{e.name}</h4>
                                   <p className="text-sm text-muted-foreground mt-1 line-clamp-2">{e.description || "No description provided."}</p>
                                 </div>
-                                <div className="text-xs text-muted-foreground flex items-center gap-1.5">
-                                  {e.type === 'online' ? <Globe className="w-3 h-3" /> : <Lock className="w-3 h-3" />}
-                                  {e.address || e.venue || (e.type === 'online' ? "Online Event" : "No location set")}
+                                <div className="text-xs text-muted-foreground flex items-center justify-between gap-1.5">
+                                  <div className="flex items-center gap-1.5">
+                                    {e.type === 'online' ? <Globe className="w-3 h-3" /> : <Lock className="w-3 h-3" />}
+                                    <span className="truncate max-w-[150px]">
+                                      {e.address || e.venue || (e.type === 'online' ? "Online Event" : "No location set")}
+                                    </span>
+                                  </div>
+                                  <span className="shrink-0 font-medium text-blue-600 bg-blue-50 px-2 py-0.5 rounded text-[10px]">
+                                    {e.attendeeCount ?? 0} {e.attendeeCount === 1 ? 'attendee' : 'attendees'}
+                                  </span>
                                 </div>
                                 <div className="pt-3 flex gap-2 border-t mt-3">
                                   {e.eventStatus === 'pending' ? (
@@ -1983,8 +2032,9 @@ export default function ContentEngagementPage() {
                />
              ) : null}
              <div className="grid gap-4 md:grid-cols-2">
-               <DetailItem label="Status" value={selectedEvent.eventStatus || "approved"} />
+               <DetailItem label="Status" value={selectedEvent.rawStatus || selectedEvent.eventStatus || "ACTIVE"} />
                <DetailItem label="Type" value={selectedEvent.type || "-"} />
+               <DetailItem label="Attendees" value={String(selectedEvent.attendeeCount ?? 0)} />
                <DetailItem
                  label="Starts"
                  value={selectedEvent.startTime ? format(new Date(selectedEvent.startTime), "PPP p") : "-"}
@@ -2020,10 +2070,12 @@ export default function ContentEngagementPage() {
                   </Select>
                 </div>
               </div>
-             <div>
-               <p className="text-xs font-semibold uppercase text-muted-foreground">Description</p>
-               <p className="mt-1 text-sm">{selectedEvent.description || "No description provided."}</p>
-             </div>
+              <div>
+                <p className="text-xs font-semibold uppercase text-muted-foreground">Description</p>
+                <div className="max-h-[150px] overflow-y-auto no-scrollbar border rounded-md p-3 bg-muted/30 mt-1">
+                  <p className="text-sm whitespace-pre-wrap">{selectedEvent.description || "No description provided."}</p>
+                </div>
+              </div>
            </div>
          )}
          <DialogFooter>
@@ -2046,13 +2098,48 @@ export default function ContentEngagementPage() {
                  Approve
                </Button>
              </>
-           ) : null}
-           <Button variant="outline" onClick={() => setEventDetailsOpen(false)}>
-             Close
-           </Button>
-         </DialogFooter>
+            ) : null}
+            {selectedEvent && (
+              <Button
+                variant="destructive"
+                onClick={() => setDeleteConfirmOpen(true)}
+                disabled={deleteEventMutation.isPending}
+              >
+                {deleteEventMutation.isPending ? "Deleting..." : "Delete"}
+              </Button>
+            )}
+            <Button variant="outline" onClick={() => setEventDetailsOpen(false)}>
+              Close
+            </Button>
+          </DialogFooter>
        </DialogContent>
      </Dialog>
+
+      <AlertDialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This action cannot be undone. This will permanently delete the event
+              <strong> {selectedEvent?.name}</strong> and remove all associated data.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setDeleteConfirmOpen(false)}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => {
+                if (selectedEvent) {
+                  deleteEventMutation.mutate(selectedEvent.eventId);
+                }
+                setDeleteConfirmOpen(false);
+              }}
+            >
+              Delete Event
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
      <Dialog open={resourceDialogOpen} onOpenChange={setResourceDialogOpen}>
        <DialogContent className="sm:max-w-[520px]">
@@ -2084,6 +2171,7 @@ export default function ContentEngagementPage() {
            <div className="space-y-2">
              <Label>Description</Label>
              <Textarea
+               className="min-h-[80px] max-h-[100px] resize-none"
                value={resourceForm.description}
                onChange={(event) =>
                  setResourceForm((prev) => ({ ...prev, description: event.target.value }))

@@ -853,7 +853,7 @@ function MetricCard({ title, value, description, icon, highlight = false, loadin
   return (
     <Card className={highlight ? "border-orange-200 bg-orange-50/30" : ""}>
       <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-2">
-        <CardTitle className="text-sm font-medium leading-normal">{title}</CardTitle>
+        <CardTitle className="text-sm font-medium leading-normal min-h-[40px]">{title}</CardTitle>
         <div className="flex-shrink-0">
           {icon}
         </div>

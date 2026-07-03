@@ -7,6 +7,8 @@ export type EventModerationAction = "approve" | "reject";
 
 export interface BackofficeEvent extends Event {
   eventStatus: "approved" | "pending" | "rejected";
+  rawStatus?: string;
+  attendeeCount?: number;
 }
 
 export interface EventsResponse {
@@ -57,6 +59,7 @@ function normalizeEventStatus(rawStatus: unknown): BackofficeEvent["eventStatus"
 
 function normalizeEvent(event: any, fallbackStatus?: unknown): BackofficeEvent {
   const type = String(event?.type ?? "online").toLowerCase();
+  const rawStatusVal = event?.status ?? event?.eventStatus ?? fallbackStatus;
   return {
     eventId: event?.eventId ?? event?.id ?? "",
     type,
@@ -73,8 +76,10 @@ function normalizeEvent(event: any, fallbackStatus?: unknown): BackofficeEvent {
     createdAt: event?.createdAt ?? "",
     updatedAt: event?.updatedAt ?? "",
     coverImageUrl: event?.coverImageUrl ?? event?.coverImagePath ?? "",
-    eventStatus: normalizeEventStatus(event?.eventStatus ?? event?.status ?? fallbackStatus),
+    eventStatus: normalizeEventStatus(rawStatusVal),
+    rawStatus: rawStatusVal ? String(rawStatusVal).toUpperCase() : undefined,
     visibility: event?.visibility ?? "PUBLIC",
+    attendeeCount: Number(event?.attendeeCount ?? 0),
   };
 }
 
@@ -176,5 +181,11 @@ export async function updateEventVisibility(
   return await apiRequest(API_ENDPOINTS.backoffice.updateEventVisibility(eventId), {
     method: "PATCH",
     body: JSON.stringify({ visibility }),
+  });
+}
+
+export async function deleteEvent(eventId: string): Promise<void> {
+  await apiRequest(API_ENDPOINTS.backoffice.deleteEvent(eventId), {
+    method: "DELETE",
   });
 }
