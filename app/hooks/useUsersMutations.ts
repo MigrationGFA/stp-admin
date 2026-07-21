@@ -11,7 +11,9 @@ import {
   unlockUser,
   changeUserRole,
   rejectUserVerification,
+  exportUsersCsv,
   type CreateUserPayload,
+  type ExportUsersFilters,
 } from "@/services/apiUsers";
 
 export function useCreateUserMutation() {
@@ -156,6 +158,25 @@ export function useRejectUserMutation() {
     },
     onError: (error: any) => {
       toast.error(error?.message || "Failed to reject user");
+    },
+  });
+}
+
+export function useExportUsersMutation() {
+  return useMutation({
+    mutationFn: (filters?: ExportUsersFilters) => exportUsersCsv(filters),
+    onSuccess: (blob) => {
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.setAttribute("download", `alumni_users_export_${new Date().toISOString().split("T")[0]}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      toast.success("Users CSV exported successfully");
+    },
+    onError: (error: any) => {
+      toast.error(error?.message || "Failed to export users CSV");
     },
   });
 }

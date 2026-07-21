@@ -13,8 +13,8 @@ export default defineConfig({
   },
   server: {
     proxy: {
-      "/stp": {
-        target: "https://app.gfa-tech.com",
+      "/api": {
+        target: "https://api.blazingtorrent.org",
         changeOrigin: true,
         secure: true,
       },

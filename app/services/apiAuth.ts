@@ -12,6 +12,7 @@ export interface RegisterPayload {
   email?: string;
   emailAddress?: string;
   password: string;
+  role?: string;
   is_onboarded?: boolean | string | number;
   password_change_required?: boolean | string | number;
   isOnboarded?: boolean | string | number;
@@ -80,6 +81,7 @@ export async function register(payload: RegisterPayload): Promise<AuthActionResp
       ...payload,
       email: emailAddress,
       emailAddress,
+      role: payload.role || "MODERATOR_ADMIN",
       is_onboarded: payload.is_onboarded ?? payload.isOnboarded ?? true,
       password_change_required:
         payload.password_change_required ?? payload.passwordChangeRequired ?? true,

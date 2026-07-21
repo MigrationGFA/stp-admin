@@ -4,7 +4,7 @@ import {
   Lock, History, Info, Plus, Moon, Sun, 
   KeyRound, Mail, Check,
   ShieldUser, ShieldAlert, Copy, RefreshCw, AlertTriangle,
-  ChevronsUpDown
+  ChevronsUpDown, Eye, EyeOff
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -60,6 +60,7 @@ import {
 
 export default function SystemManagementPage() {
   const [isAdminModalOpen, setIsAdminModalOpen] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [adminToDelete, setAdminToDelete] = useState<string | null>(null);
   const [notificationForm, setNotificationForm] = useState({
@@ -181,6 +182,7 @@ export default function SystemManagementPage() {
       toast.success("Admin account created successfully");
       setAdminForm({ firstName: "", lastName: "", email: "", password: "" });
       setIsAdminModalOpen(false);
+      setShowPassword(false);
       queryClient.invalidateQueries({ queryKey: ["backoffice-admins"] });
     },
     onError: (error: any) => {
@@ -404,7 +406,12 @@ export default function SystemManagementPage() {
                 <CardDescription>Manage team members with dashboard access.</CardDescription>
               </div>
               
-              <Dialog open={isAdminModalOpen} onOpenChange={setIsAdminModalOpen}>
+              <Dialog open={isAdminModalOpen} onOpenChange={(open) => {
+                setIsAdminModalOpen(open);
+                if (!open) {
+                  setShowPassword(false);
+                }
+              }}>
                 <DialogTrigger asChild>
                   <Button size="sm"><Plus className="h-4 w-4 mr-2" /> Add Admin</Button>
                 </DialogTrigger>
@@ -468,19 +475,35 @@ export default function SystemManagementPage() {
                       </div>
                       <div className="space-y-2">
                         <Label htmlFor="adminPassword">Temporary Password</Label>
-                        <Input
-                          id="adminPassword"
-                          type="password"
-                          value={adminForm.password}
-                          onChange={(event) =>
-                            setAdminForm((prev) => ({
-                              ...prev,
-                              password: event.target.value,
-                            }))
-                          }
-                          disabled={createAdminMutation.isPending}
-                          required
-                        />
+                        <div className="relative">
+                          <Input
+                            id="adminPassword"
+                            type={showPassword ? "text" : "password"}
+                            className="pr-10"
+                            value={adminForm.password}
+                            onChange={(event) =>
+                              setAdminForm((prev) => ({
+                                ...prev,
+                                password: event.target.value,
+                              }))
+                            }
+                            disabled={createAdminMutation.isPending}
+                            required
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowPassword((prev) => !prev)}
+                            className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground focus:outline-none disabled:opacity-50"
+                            disabled={createAdminMutation.isPending}
+                            aria-label={showPassword ? "Hide password" : "Show password"}
+                          >
+                            {showPassword ? (
+                              <EyeOff className="h-4 w-4" />
+                            ) : (
+                              <Eye className="h-4 w-4" />
+                            )}
+                          </button>
+                        </div>
                       </div>
                     </div>
                     <DialogFooter>
