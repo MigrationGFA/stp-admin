@@ -12,6 +12,7 @@ export const API_ENDPOINTS = {
     analyticsFilters: "/backoffice/analytics/filters",
     users: "/backoffice/users",
     usersSummary: "/backoffice/users/summary",
+    exportUsers: "/backoffice/users/export",
     userById: (userId: string) => `/backoffice/users/${userId}`,
     verifyUser: (userId: string) => `/backoffice/users/${userId}/verify`,
     activateUser: (userId: string) => `/backoffice/users/${userId}/activate`,

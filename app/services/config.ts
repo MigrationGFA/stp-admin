@@ -1,1 +1,1 @@
-export const API_BASE_URL = import.meta.env.DEV ? "/stp/api" : "https://app.gfa-tech.com/stp/api";
+export const API_BASE_URL = import.meta.env.DEV ? "/api" : "https://api.blazingtorrent.org/api";

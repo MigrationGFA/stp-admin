@@ -72,6 +72,7 @@ import {
   useLockUserMutation,
   useUnlockUserMutation,
   useChangeUserRoleMutation,
+  useExportUsersMutation,
 } from "@/hooks/useUsersMutations";
 import type { User } from "@/lib/type";
 
@@ -114,6 +115,7 @@ export default function UserDirectoryPage() {
   const lockUserMutation = useLockUserMutation();
   const unlockUserMutation = useUnlockUserMutation();
   const changeUserRoleMutation = useChangeUserRoleMutation();
+  const exportUsersMutation = useExportUsersMutation();
 
   const { data: usersResponse, isLoading, error, hasNextPage } = useUsers(page, perPage);
   const users = usersResponse?.data ?? [];
@@ -164,33 +166,40 @@ export default function UserDirectoryPage() {
   const totalFilteredPages = isFiltering ? Math.ceil(filteredUsers.length / perPage) : null;
   const showNextPage = isFiltering ? page < (totalFilteredPages ?? 1) : hasNextPage;
 
-  const handleExportCSV = () => {
-    const exportData = allUsers.map(u => ({
-      "First Name": u.firstName,
-      "Last Name": u.lastName,
-      "Email Address": u.email,
-      "Status": u.isVerified ? "Verified Alumni" : "Pending",
-      "Role": u.role || "USER",
-    }));
+  const handleExportCSV = async () => {
+    try {
+      await exportUsersMutation.mutateAsync({
+        status: statusFilter !== "ALL" ? statusFilter.toLowerCase() : undefined,
+      });
+    } catch {
+      // Fallback to client-side CSV export if server endpoint is unavailable
+      const exportData = allUsers.map(u => ({
+        "First Name": u.firstName,
+        "Last Name": u.lastName,
+        "Email Address": u.email,
+        "Status": u.isVerified ? "Verified Alumni" : "Pending",
+        "Role": u.role || "USER",
+      }));
 
-    if (exportData.length === 0) {
-      toast.error("No data to export");
-      return;
+      if (exportData.length === 0) {
+        toast.error("No data to export");
+        return;
+      }
+
+      const headers = Object.keys(exportData[0]).join(",");
+      const rows = exportData.map(obj => Object.values(obj).map(val => `"${val}"`).join(","));
+      const csvContent = [headers, ...rows].join("\n");
+
+      const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.setAttribute("download", `alumni_directory_${new Date().toISOString().split('T')[0]}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      toast.success("CSV exported successfully");
     }
-
-    const headers = Object.keys(exportData[0]).join(",");
-    const rows = exportData.map(obj => Object.values(obj).map(val => `"${val}"`).join(","));
-    const csvContent = [headers, ...rows].join("\n");
-
-    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.setAttribute("download", `alumni_directory_${new Date().toISOString().split('T')[0]}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    toast.success("CSV exported successfully");
   };
 
   const handleDelete = async (user: User) => {

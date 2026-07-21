@@ -1,6 +1,7 @@
 import type { User } from "@/lib/type";
 import { apiRequest } from "./apiClient";
 import { API_ENDPOINTS } from "./endpoints";
+import { API_BASE_URL } from "./config";
 
 export interface UsersResponse {
   status: boolean;
@@ -228,4 +229,46 @@ export async function updateUserStatus(
     method: "PATCH",
     body: JSON.stringify({ status }),
   });
+}
+
+export interface ExportUsersFilters {
+  cohort?: string;
+  country?: string;
+  sector?: string;
+  status?: string;
+}
+
+export async function exportUsersCsv(filters: ExportUsersFilters = {}): Promise<Blob> {
+  const query: Record<string, string> = {};
+  if (filters.cohort && filters.cohort !== "all") query.cohort = filters.cohort;
+  if (filters.country && filters.country !== "all") query.country = filters.country;
+  if (filters.sector && filters.sector !== "all") query.sector = filters.sector;
+  if (filters.status && filters.status !== "ALL" && filters.status !== "all") {
+    query.status = filters.status;
+  }
+
+  const token = typeof window !== "undefined" ? localStorage.getItem("stp_token") : null;
+  const queryParams = new URLSearchParams(query).toString();
+  const url = `${API_BASE_URL}${API_ENDPOINTS.backoffice.exportUsers}${queryParams ? `?${queryParams}` : ""}`;
+
+  const response = await fetch(url, {
+    method: "GET",
+    headers: {
+      Accept: "text/csv, application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(`Export failed with status ${response.status}`);
+  }
+
+  const contentType = response.headers.get("content-type");
+  if (contentType && contentType.includes("application/json")) {
+    const json = await response.json();
+    const csvText = typeof json === "string" ? json : json?.data ?? JSON.stringify(json);
+    return new Blob([csvText], { type: "text/csv;charset=utf-8;" });
+  }
+
+  return await response.blob();
 }
