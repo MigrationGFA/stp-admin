@@ -43,6 +43,10 @@ export const API_ENDPOINTS = {
     dealRoomAuditLog: (roomId: string) => `/backoffice/dealrooms/${roomId}/audit-log`,
     lockDealRoom: (roomId: string) => `/backoffice/dealrooms/${roomId}/lock`,
     moderationPosts: "/backoffice/content/posts",
+    reportedPosts: "/backoffice/content/posts/reported",
+    hidePost: (postId: string) => `/backoffice/newsfeed/${postId}/hide`,
+    unhidePost: (postId: string) => `/backoffice/newsfeed/${postId}/unhide`,
+    deletePost: (postId: string) => `/backoffice/newsfeed/${postId}`,
     moderationResources: "/backoffice/content/resources",
     moderationResourceById: (resourceId: string) =>
       `/backoffice/content/resources/${resourceId}`,
