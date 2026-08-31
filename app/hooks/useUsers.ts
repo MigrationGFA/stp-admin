@@ -10,7 +10,7 @@ export function useUsers(page: number = 1, perPage: number = 10) {
   const setUsers = useUsersStore((state) => state.setUsers);
   const setIsLoading = useUsersStore((state) => state.setIsLoading);
   const setError = useUsersStore((state) => state.setError);
-  
+
   const [isAuthenticated, setIsAuthenticated] = useState(false);
 
   useEffect(() => {
@@ -57,7 +57,7 @@ export function useAllUsers() {
   const setAllUsers = useUsersStore((state) => state.setAllUsers);
   const setAllUsersLoading = useUsersStore((state) => state.setAllUsersLoading);
   const setError = useUsersStore((state) => state.setError);
-  
+
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [hasFetched, setHasFetched] = useState(false);
 

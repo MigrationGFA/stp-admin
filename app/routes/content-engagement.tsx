@@ -16,6 +16,13 @@ import {
   Lock,
   ImageIcon,
   Loader2,
+  ShieldAlert,
+  Eye,
+  EyeOff,
+  Trash2,
+  AlertTriangle,
+  MessageSquareWarning,
+  ExternalLink,
 } from "lucide-react";
 import {
   Card,
@@ -83,6 +90,7 @@ import {
 } from "@/services/apiEvents";
 import { TimePicker } from "@/components/ui/time-picker";
 import { useEvents } from "@/hooks/useEvents";
+import { useReportedPosts, useReportedPostMutations } from "@/hooks/useReportedPosts";
 import { useQueryClient, useQuery, useMutation } from "@tanstack/react-query";
 import {
   getPendingPosts,
@@ -97,6 +105,7 @@ import {
   getPendingResources,
   reviewResource,
   type FeedPost,
+  type ReportedPost,
   type Resource,
 } from "@/services/apiContent";
 import {
@@ -303,7 +312,7 @@ export default function ContentEngagementPage() {
       toast.error(error?.message || "Failed to delete news");
     },
   });
-  
+
   const [viewMode, setViewMode] = useState<"grid" | "calendar">("grid");
   const [resourceSubTab, setResourceSubTab] = useState<"official" | "user-uploaded" | "pending">("official");
   const [eventStatusFilter, setEventStatusFilter] = useState("all");
@@ -330,19 +339,26 @@ export default function ContentEngagementPage() {
   const newsImagesRef = useRef<HTMLInputElement>(null);
   const resourceFileRef = useRef<HTMLInputElement>(null);
 
-   // News form state
-   const [newsDialogOpen, setNewsDialogOpen] = useState(false);
-   const [newsForm, setNewsForm] = useState({
-     title: "",
-     category: "",
-     body: "",
-   });
-   const [newsImages, setNewsImages] = useState<File[]>([]);
-   const [newsLoading, setNewsLoading] = useState(false);
+  // Post moderation and reported posts hook
+  const { reportedPosts = [], isLoading: reportedPostsLoading } = useReportedPosts();
+  const { hidePost, unhidePost, deletePost: deleteReportedPostMutation, isHiding, isUnhiding, isDeleting } = useReportedPostMutations();
+  const [feedFilter, setFeedFilter] = useState<"all" | "reported" | "pending" | "hidden">("all");
+  const [postToDelete, setPostToDelete] = useState<ReportedPost | FeedPost | null>(null);
+  const [postDeleteConfirmOpen, setPostDeleteConfirmOpen] = useState(false);
 
-   // Post detail modal
-   const [postDialogOpen, setPostDialogOpen] = useState(false);
-   const [selectedPost, setSelectedPost] = useState<FeedPost | null>(null);
+  // News form state
+  const [newsDialogOpen, setNewsDialogOpen] = useState(false);
+  const [newsForm, setNewsForm] = useState({
+    title: "",
+    category: "",
+    body: "",
+  });
+  const [newsImages, setNewsImages] = useState<File[]>([]);
+  const [newsLoading, setNewsLoading] = useState(false);
+
+  // Post detail modal
+  const [postDialogOpen, setPostDialogOpen] = useState(false);
+  const [selectedPost, setSelectedPost] = useState<ReportedPost | FeedPost | null>(null);
 
    // Edit news modal
    const [editNewsDialogOpen, setEditNewsDialogOpen] = useState(false);
@@ -837,7 +853,7 @@ export default function ContentEngagementPage() {
               </DialogFooter>
             </DialogContent>
            </Dialog>
-         
+
          {/* EDIT NEWS MODAL */}
          <Dialog open={editNewsDialogOpen} onOpenChange={setEditNewsDialogOpen}>
            <DialogTrigger asChild>
@@ -946,261 +962,370 @@ export default function ContentEngagementPage() {
           <TabsTrigger value="resources">Resource Library</TabsTrigger>
         </TabsList>
 
-        {/* --- USER FEED MODERATION --- */}
+        {/* --- USER FEED MODERATION & REPORTED POSTS --- */}
         <TabsContent value="feed" className="space-y-4">
           <Card>
-            <CardHeader>
-              <CardTitle>Pending User Posts</CardTitle>
-              <CardDescription>
-                Review and approve posts from the alumni community.
-              </CardDescription>
+            <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+              <div>
+                <CardTitle className="text-xl font-bold flex items-center gap-2">
+                  <ShieldAlert className="h-5 w-5 text-amber-600" /> Community Feed Moderation
+                </CardTitle>
+                <CardDescription>
+                  Review flagged reports, moderate inappropriate content, and hide/unhide or delete posts.
+                </CardDescription>
+              </div>
+
+              {/* Moderation Sub-Filter */}
+              <div className="flex flex-wrap items-center gap-1.5 p-1 bg-muted rounded-lg border">
+                <Button
+                  variant={feedFilter === "all" ? "secondary" : "ghost"}
+                  size="sm"
+                  className="h-8 text-xs font-medium"
+                  onClick={() => setFeedFilter("all")}
+                >
+                  All Feed
+                </Button>
+                <Button
+                  variant={feedFilter === "reported" ? "secondary" : "ghost"}
+                  size="sm"
+                  className="h-8 text-xs font-medium text-amber-700 dark:text-amber-400"
+                  onClick={() => setFeedFilter("reported")}
+                >
+                  Reported ({reportedPosts.filter((p) => !p.isHidden).length})
+                </Button>
+                <Button
+                  variant={feedFilter === "hidden" ? "secondary" : "ghost"}
+                  size="sm"
+                  className="h-8 text-xs font-medium"
+                  onClick={() => setFeedFilter("hidden")}
+                >
+                  Hidden ({reportedPosts.filter((p) => p.isHidden).length})
+                </Button>
+                <Button
+                  variant={feedFilter === "pending" ? "secondary" : "ghost"}
+                  size="sm"
+                  className="h-8 text-xs font-medium"
+                  onClick={() => setFeedFilter("pending")}
+                >
+                  Pending ({pendingPosts.length})
+                </Button>
+              </div>
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                {postsLoading ? (
-                  <div className="flex items-center justify-center py-8">
+                {postsLoading || reportedPostsLoading ? (
+                  <div className="flex items-center justify-center py-12">
                     <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
                   </div>
-                ) : pendingPosts.length === 0 ? (
-                  <p className="text-muted-foreground text-center py-8">
-                    No pending posts to review.
-                  </p>
-                ) : (
-                   pendingPosts.map((post) => (
-                     <div
-                       key={post.id}
-                       className="flex items-start justify-between p-4 border rounded-lg bg-muted/30"
-                       onClick={() => {
-                         setSelectedPost(post);
-                         setPostDialogOpen(true);
-                       }}
-                       style={{ cursor: 'pointer' }}
-                     >
-                   <div className="flex gap-4">
-                     <Avatar className="h-10 w-10">
-                       <AvatarFallback>{post.user[0]}</AvatarFallback>
-                     </Avatar>
-                     <div className="space-y-1">
-                       <div className="flex items-center gap-2">
-                         <span className="font-semibold text-sm">
-                           {post.user}
-                         </span>
-                         <span className="text-[10px] text-muted-foreground uppercase">
-                           {post.time}
-                         </span>
-                         {post.status === "flagged" && (
-                           <Badge
-                             variant="destructive"
-                             className="h-4 text-[9px]"
-                           >
-                             Flagged
-                           </Badge>
-                         )}
-                       </div>
-                       <p className="text-sm text-muted-foreground leading-snug">
-                         {post.content}
-                       </p>
-                     </div>
-                   </div>
-                   <div className="flex gap-2">
-                     <Button
-                       size="icon"
-                       variant="ghost"
-                       className="text-destructive h-8 w-8"
-                       onClick={() => rejectPostMutation.mutate(post.id)}
-                       disabled={rejectPostMutation.isPending}
-                     >
-                       <X className="h-4 w-4" />
-                     </Button>
-                     <Button
-                       size="icon"
-                       variant="ghost"
-                       className="text-green-600 h-8 w-8"
-                       onClick={() => approvePostMutation.mutate(post.id)}
-                       disabled={approvePostMutation.isPending}
-                     >
-                       <Check className="h-4 w-4" />
-                     </Button>
-                   </div>
-                 </div>
-               ))
-             )}
-           </div>
-         </CardContent>
-       </Card>
-       
-       {/* Post Detail Modal */}
-       <Dialog open={postDialogOpen} onOpenChange={setPostDialogOpen}>
-         <DialogTrigger asChild>
-           <div className="pointer-events-none" />
-         </DialogTrigger>
-         <DialogContent className="sm:max-w-[500px]">
-           <DialogHeader>
-             <DialogTitle>Post Details</DialogTitle>
-             <DialogDescription>
-               Review the content before taking action.
-             </DialogDescription>
-           </DialogHeader>
-           <div className="space-y-4">
-             {selectedPost && (
-               <>
-                 <div className="space-y-2">
-                   <Label>Author</Label>
-                   <p className="font-medium">{selectedPost.user}</p>
-                 </div>
-                 <div className="space-y-2">
-                   <Label>Time</Label>
-                   <p className="text-muted-foreground">{selectedPost.time}</p>
-                 </div>
-                  <div className="space-y-2">
-                    <Label>Content</Label>
-                    <div className="max-h-[250px] overflow-y-auto no-scrollbar border rounded-md p-3 bg-muted/30">
-                      <p className="text-muted-foreground text-sm whitespace-pre-wrap">{selectedPost.content}</p>
+                ) : (() => {
+                    const displayPosts: (ReportedPost | FeedPost)[] = [];
+                    if (feedFilter === "reported") {
+                      displayPosts.push(...reportedPosts.filter((p) => !p.isHidden));
+                    } else if (feedFilter === "hidden") {
+                      displayPosts.push(...reportedPosts.filter((p) => p.isHidden));
+                    } else if (feedFilter === "pending") {
+                      displayPosts.push(...pendingPosts);
+                    } else {
+                      // Combined all
+                      displayPosts.push(...reportedPosts);
+                      pendingPosts.forEach((p) => {
+                        if (!displayPosts.some((dp) => dp.id === p.id)) {
+                          displayPosts.push(p);
+                        }
+                      });
+                    }
+
+                    if (displayPosts.length === 0) {
+                      return (
+                        <div className="text-center py-12 text-muted-foreground text-sm">
+                          No posts found in this moderation view.
+                        </div>
+                      );
+                    }
+
+                    return displayPosts.map((post) => {
+                      const isReportedPost = Boolean((post as ReportedPost).reportReason || post.status === "reported" || post.status === "flagged");
+                      const reportedItem = post as ReportedPost;
+
+                      return (
+                        <div
+                          key={post.id}
+                          className={`p-4 border rounded-lg transition-all duration-200 flex flex-col gap-3 ${
+                            reportedItem.isHidden
+                              ? "bg-muted/40 border-muted opacity-80"
+                              : isReportedPost
+                                ? "bg-amber-50/20 dark:bg-amber-950/10 border-amber-200/80 dark:border-amber-900/40 hover:border-amber-400"
+                                : "bg-card hover:border-muted-foreground/30 shadow-xs"
+                          }`}
+                        >
+                          <div className="flex items-start justify-between gap-4">
+                            <div className="flex items-start gap-3.5 flex-1 min-w-0">
+                              <Avatar className="h-9 w-9 shrink-0 border">
+                                <AvatarFallback className="text-xs font-semibold">{post.user.slice(0, 2).toUpperCase()}</AvatarFallback>
+                              </Avatar>
+                              <div className="space-y-1 flex-1 min-w-0">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="font-semibold text-sm text-foreground">{post.user}</span>
+                                  <span className="text-[11px] text-muted-foreground">{post.time}</span>
+                                  {reportedItem.isHidden ? (
+                                    <Badge variant="secondary" className="text-[10px] bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
+                                      <EyeOff className="h-3 w-3 mr-1" /> Hidden
+                                    </Badge>
+                                  ) : isReportedPost ? (
+                                    <Badge variant="destructive" className="text-[10px]">
+                                      <AlertTriangle className="h-3 w-3 mr-1" /> Reported
+                                    </Badge>
+                                  ) : post.status === "pending" ? (
+                                    <Badge variant="outline" className="text-[10px] bg-amber-50 text-amber-700 border-amber-200">
+                                      Pending Approval
+                                    </Badge>
+                                  ) : null}
+                                </div>
+
+                                {post.title && (
+                                  <p className="text-sm font-semibold text-foreground pt-0.5">{post.title}</p>
+                                )}
+                                <p className="text-xs text-muted-foreground leading-relaxed whitespace-pre-wrap line-clamp-3">
+                                  {post.content}
+                                </p>
+
+                                {/* Prominent Report Reason Alert */}
+                                {reportedItem.reportReason && (
+                                  <div className="mt-2 flex items-start gap-1.5 text-xs text-amber-900 dark:text-amber-300 bg-amber-100/70 dark:bg-amber-950/40 p-2.5 rounded-md border border-amber-300/60 dark:border-amber-800/50">
+                                    <MessageSquareWarning className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400 mt-0.5" />
+                                    <div>
+                                      <span className="font-bold">Report Reason: </span>
+                                      <span>{reportedItem.reportReason}</span>
+                                      {reportedItem.reportedBy && (
+                                        <span className="block text-[10px] text-amber-800/80 dark:text-amber-400/80 mt-0.5">
+                                          Reported by: {reportedItem.reportedBy}
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Action Buttons */}
+                            <div className="flex items-center gap-2 shrink-0">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-8 text-xs"
+                                onClick={() => {
+                                  setSelectedPost(post);
+                                  setPostDialogOpen(true);
+                                }}
+                              >
+                                View Details
+                              </Button>
+
+                              {/* Hide / Unhide Toggle */}
+                              {reportedItem.isHidden ? (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-8 text-xs border-emerald-300 text-emerald-700 hover:bg-emerald-50"
+                                  onClick={() => unhidePost(post.postId || post.id)}
+                                  disabled={isUnhiding}
+                                >
+                                  <Eye className="h-3.5 w-3.5 mr-1" /> Unhide
+                                </Button>
+                              ) : (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-8 text-xs border-amber-300 text-amber-800 hover:bg-amber-50"
+                                  onClick={() => hidePost(post.postId || post.id)}
+                                  disabled={isHiding}
+                                >
+                                  <EyeOff className="h-3.5 w-3.5 mr-1" /> Hide
+                                </Button>
+                              )}
+
+                              {/* Delete button with confirmation */}
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-8 text-xs text-destructive hover:bg-destructive/10 px-2"
+                                onClick={() => {
+                                  setPostToDelete(post);
+                                  setPostDeleteConfirmOpen(true);
+                                }}
+                                disabled={isDeleting}
+                                title="Delete Post"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+
+                              {/* Standard approve/reject for pending items */}
+                              {post.status === "pending" && (
+                                <>
+                                  <Button
+                                    size="icon"
+                                    variant="ghost"
+                                    className="text-destructive h-8 w-8"
+                                    onClick={() => rejectPostMutation.mutate(post.id)}
+                                    disabled={rejectPostMutation.isPending}
+                                    title="Reject Post"
+                                  >
+                                    <X className="h-4 w-4" />
+                                  </Button>
+                                  <Button
+                                    size="icon"
+                                    variant="ghost"
+                                    className="text-green-600 h-8 w-8"
+                                    onClick={() => approvePostMutation.mutate(post.id)}
+                                    disabled={approvePostMutation.isPending}
+                                    title="Approve Post"
+                                  >
+                                    <Check className="h-4 w-4" />
+                                  </Button>
+                                </>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    });
+                  })()}
+              </div>
+            </CardContent>
+          </Card>
+
+        {/* Post Detail Modal */}
+        <Dialog open={postDialogOpen} onOpenChange={setPostDialogOpen}>
+          <DialogContent className="sm:max-w-[550px] max-h-[85vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Post Details & Moderation</DialogTitle>
+              <DialogDescription>
+                Review the author, report reasons, and take administrative action.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-2">
+              {selectedPost && (
+                <>
+                  <div className="flex items-center gap-3 p-3 bg-muted/40 rounded-lg border">
+                    <Avatar className="h-10 w-10 border">
+                      <AvatarFallback>{selectedPost.user.slice(0, 2).toUpperCase()}</AvatarFallback>
+                    </Avatar>
+                    <div>
+                      <p className="font-semibold text-sm">{selectedPost.user}</p>
+                      <p className="text-xs text-muted-foreground">{selectedPost.time}</p>
                     </div>
                   </div>
-                 {selectedPost.status === "flagged" && (
-                   <div className="space-y-2">
-                     <Label>Status</Label>
-                     <Badge variant="destructive">Flagged</Badge>
-                   </div>
-                 )}
-               </>
-             )}
-           </div>
-           <DialogFooter>
-             <Button
-               variant="outline"
-               onClick={() => {
-                 setPostDialogOpen(false);
-               }}
-             >
-               Close
-             </Button>
-             {selectedPost && (
-               <>
-                 <Button
-                   size="icon"
-                   variant="ghost"
-                   className="text-destructive h-8 w-8"
-                   onClick={() => {
-                     rejectPostMutation.mutate(selectedPost.id);
-                     setPostDialogOpen(false);
-                   }}
-                   disabled={rejectPostMutation.isPending}
-                 >
-                   <X className="h-4 w-4" />
-                 </Button>
-                 <Button
-                   size="icon"
-                   variant="ghost"
-                   className="text-green-600 h-8 w-8"
-                   onClick={() => {
-                     approvePostMutation.mutate(selectedPost.id);
-                     setPostDialogOpen(false);
-                   }}
-                   disabled={approvePostMutation.isPending}
-                 >
-                   <Check className="h-4 w-4" />
-                 </Button>
-               </>
-             )}
-           </DialogFooter>
-         </DialogContent>
-       </Dialog>
 
-       {/* News Details Modal */}
-       <Dialog open={newsDetailsDialogOpen} onOpenChange={setNewsDetailsDialogOpen}>
-         <DialogContent className="sm:max-w-[600px] max-h-[85vh] overflow-y-auto">
-           {selectedNewsItem && (
-             <>
-               <DialogHeader className="space-y-3">
-                 {selectedNewsItem.coverImageUrl || selectedNewsItem.coverImage ? (
-                   <div className="w-full h-56 rounded-md overflow-hidden bg-muted">
-                     <img
-                       src={selectedNewsItem.coverImageUrl || selectedNewsItem.coverImage}
-                       alt={selectedNewsItem.title}
-                       className="w-full h-full object-cover"
-                     />
-                   </div>
-                 ) : (
-                   <div className="w-full h-32 bg-gradient-to-br from-red-500/10 to-blue-500/10 flex items-center justify-center rounded-md text-muted-foreground text-sm border">
-                     <Newspaper className="h-10 w-10 opacity-40" />
-                   </div>
-                 )}
+                  {(selectedPost as ReportedPost).reportReason && (
+                    <div className="p-3 bg-amber-50 dark:bg-amber-950/40 rounded-lg border border-amber-200 dark:border-amber-900/60 text-xs space-y-1">
+                      <div className="font-bold text-amber-900 dark:text-amber-300 flex items-center gap-1.5">
+                        <AlertTriangle className="h-4 w-4 text-amber-600" />
+                        Report Reason
+                      </div>
+                      <p className="text-amber-800 dark:text-amber-300 pl-5">{(selectedPost as ReportedPost).reportReason}</p>
+                      {(selectedPost as ReportedPost).reportedBy && (
+                        <p className="text-[11px] text-amber-700 dark:text-amber-400 pl-5">
+                          Submitted by: {(selectedPost as ReportedPost).reportedBy}
+                        </p>
+                      )}
+                    </div>
+                  )}
 
-                 <div className="flex items-center justify-between">
-                   <Badge variant="secondary" className="uppercase font-bold tracking-wider text-[10px]">
-                     {selectedNewsItem.category || "Official"}
-                   </Badge>
-                   <span className="text-xs text-muted-foreground">{selectedNewsItem.views.toLocaleString()} reads</span>
-                 </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs uppercase text-muted-foreground font-semibold">Content</Label>
+                    {selectedPost.title && (
+                      <p className="font-bold text-sm text-foreground">{selectedPost.title}</p>
+                    )}
+                    <div className="max-h-[220px] overflow-y-auto border rounded-md p-3.5 bg-muted/30 text-xs leading-relaxed whitespace-pre-wrap">
+                      {selectedPost.content}
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+            <DialogFooter className="flex-col sm:flex-row gap-2 pt-2 border-t">
+              <Button
+                variant="outline"
+                onClick={() => setPostDialogOpen(false)}
+              >
+                Close
+              </Button>
+              {selectedPost && (
+                <div className="flex items-center gap-2 ml-auto">
+                  {(selectedPost as ReportedPost).isHidden ? (
+                    <Button
+                      variant="outline"
+                      className="border-emerald-300 text-emerald-700 hover:bg-emerald-50"
+                      onClick={() => {
+                        unhidePost(selectedPost.postId || selectedPost.id);
+                        setPostDialogOpen(false);
+                      }}
+                      disabled={isUnhiding}
+                    >
+                      <Eye className="h-3.5 w-3.5 mr-1" /> Unhide
+                    </Button>
+                  ) : (
+                    <Button
+                      variant="outline"
+                      className="border-amber-300 text-amber-800 hover:bg-amber-50"
+                      onClick={() => {
+                        hidePost(selectedPost.postId || selectedPost.id);
+                        setPostDialogOpen(false);
+                      }}
+                      disabled={isHiding}
+                    >
+                      <EyeOff className="h-3.5 w-3.5 mr-1" /> Hide Post
+                    </Button>
+                  )}
 
-                 <DialogTitle className="text-2xl font-bold tracking-tight leading-tight">
-                   {selectedNewsItem.title}
-                 </DialogTitle>
-                 
-                 <div className="flex items-center gap-3 pt-2 text-xs text-muted-foreground">
-                   <div className="flex items-center gap-1.5">
-                     {selectedNewsItem.authorImageUrl || selectedNewsItem.authorImage ? (
-                       <img 
-                         src={selectedNewsItem.authorImageUrl || selectedNewsItem.authorImage} 
-                         alt="Author" 
-                         className="h-6 w-6 rounded-full object-cover border" 
-                       />
-                     ) : (
-                       <div className="h-6 w-6 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-[10px]">
-                         A
-                       </div>
-                     )}
-                     <span className="font-semibold text-foreground">Official Publisher</span>
-                   </div>
-                   <span>•</span>
-                   <span>{format(new Date(selectedNewsItem.publishedAt), "PPP p")}</span>
-                 </div>
-               </DialogHeader>
+                  <Button
+                    variant="destructive"
+                    onClick={() => {
+                      setPostToDelete(selectedPost);
+                      setPostDialogOpen(false);
+                      setPostDeleteConfirmOpen(true);
+                    }}
+                    disabled={isDeleting}
+                  >
+                    <Trash2 className="h-3.5 w-3.5 mr-1" /> Delete
+                  </Button>
+                </div>
+              )}
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
-               <div className="space-y-4 py-4 text-sm text-foreground/90 leading-relaxed whitespace-pre-line border-t border-b">
-                 {selectedNewsItem.content}
-               </div>
+        {/* Delete Confirmation AlertDialog for Post */}
+        <AlertDialog open={postDeleteConfirmOpen} onOpenChange={setPostDeleteConfirmOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle className="text-destructive flex items-center gap-2">
+                <Trash2 className="h-5 w-5" /> Delete Reported Post
+              </AlertDialogTitle>
+              <AlertDialogDescription>
+                Are you sure you want to delete this reported post by <strong>{postToDelete?.user || "this user"}</strong>? This action is permanent and will remove the post completely from the alumni community feed.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel onClick={() => setPostToDelete(null)}>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                onClick={() => {
+                  if (postToDelete) {
+                    deleteReportedPostMutation(postToDelete.postId || postToDelete.id);
+                    setPostToDelete(null);
+                  }
+                }}
+                disabled={isDeleting}
+              >
+                {isDeleting ? "Deleting..." : "Permanently Delete"}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      </TabsContent>
 
-               {/* Inline Post Images */}
-               {selectedNewsItem.postImages && selectedNewsItem.postImages.length > 0 && (
-                 <div className="space-y-2">
-                   <p className="text-xs font-semibold uppercase text-muted-foreground">Article Images</p>
-                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                     {selectedNewsItem.postImages.map((imgUrl, idx) => (
-                       <div key={idx} className="h-28 rounded-md overflow-hidden bg-muted border">
-                         <img
-                           src={imgUrl}
-                           alt={`Article inline ${idx + 1}`}
-                           className="w-full h-full object-cover hover:scale-105 transition-transform duration-300 cursor-pointer"
-                           onClick={() => window.open(imgUrl, "_blank")}
-                         />
-                       </div>
-                     ))}
-                   </div>
-                 </div>
-               )}
-
-               <DialogFooter className="pt-2">
-                 <Button
-                   variant="outline"
-                   onClick={() => {
-                     setNewsDetailsDialogOpen(false);
-                     setSelectedNewsItem(null);
-                   }}
-                   className="w-full sm:w-auto"
-                 >
-                   Close
-                 </Button>
-               </DialogFooter>
-             </>
-           )}
-         </DialogContent>
-       </Dialog>
-     </TabsContent>
-
-        {/* --- OFFICIAL NEWS FEED --- */}
+         {/* --- OFFICIAL NEWS FEED --- */}
         <TabsContent value="news" className="space-y-4">
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             {newsItemsLoading ? (
@@ -1213,8 +1338,8 @@ export default function ContentEngagementPage() {
               </p>
             ) : (
               newsItems.map((news) => (
-                <Card 
-                  key={news.id} 
+                <Card
+                  key={news.id}
                   className="overflow-hidden flex flex-col justify-between h-full cursor-pointer hover:border-primary/50 transition-colors duration-200"
                   onClick={() => {
                     setSelectedNewsItem(news);
@@ -1250,10 +1375,10 @@ export default function ContentEngagementPage() {
                     <div className="flex justify-between items-center text-xs text-muted-foreground border-t pt-4">
                       <div className="flex items-center gap-2">
                         {news.authorImageUrl || news.authorImage ? (
-                          <img 
-                            src={news.authorImageUrl || news.authorImage} 
-                            alt="Author" 
-                            className="h-5 w-5 rounded-full object-cover border" 
+                          <img
+                            src={news.authorImageUrl || news.authorImage}
+                            alt="Author"
+                            className="h-5 w-5 rounded-full object-cover border"
                           />
                         ) : (
                           <div className="h-5 w-5 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-[8px]">
@@ -1265,9 +1390,9 @@ export default function ContentEngagementPage() {
                       <span>{news.views.toLocaleString()} reads</span>
                     </div>
                     <div className="mt-4 flex gap-2 justify-end">
-                      <Button 
-                        variant="secondary" 
-                        size="sm" 
+                      <Button
+                        variant="secondary"
+                        size="sm"
                         className="h-8"
                         onClick={(e) => {
                           e.stopPropagation();
@@ -1351,7 +1476,7 @@ export default function ContentEngagementPage() {
                 </SelectContent>
               </Select>
             </div>
-            
+
             <div className="flex flex-1 items-center justify-center gap-4">
               <div className="flex items-center gap-2 text-xs text-muted-foreground font-medium">
                 <span className="w-3 h-3 rounded-full bg-blue-500"></span> Approved
@@ -1405,11 +1530,11 @@ export default function ContentEngagementPage() {
                         </div>
                       )}
                       <div className="absolute top-2 right-2 flex flex-col gap-1 items-end">
-                        <Badge 
+                        <Badge
                           variant={event.eventStatus === 'pending' ? "secondary" : "default"}
                           className={
-                            event.eventStatus === 'pending' 
-                              ? 'bg-amber-100 text-amber-800 hover:bg-amber-100 border-amber-200' 
+                            event.eventStatus === 'pending'
+                              ? 'bg-amber-100 text-amber-800 hover:bg-amber-100 border-amber-200'
                               : event.rawStatus === 'REJECTED'
                                 ? 'bg-red-100 text-red-800 hover:bg-red-100 border-red-200'
                                 : 'bg-green-100 text-green-800 hover:bg-green-100 border-green-200'
@@ -1529,8 +1654,8 @@ export default function ContentEngagementPage() {
                       return d.getFullYear() === year && d.getMonth() === month && d.getDate() === day;
                     });
                     cells.push(
-                      <div 
-                        key={day} 
+                      <div
+                        key={day}
                         className="bg-background min-h-[80px] p-2 border-t hover:bg-muted/10 cursor-pointer transition-colors relative"
                         onClick={() => {
                           setEventForm(prev => ({ ...prev, date: currentDayDate }));
@@ -1553,9 +1678,9 @@ export default function ContentEngagementPage() {
                                 {e.eventStatus === 'pending' ? '⏳ ' : ''}{e.name}
                               </div>
                             </PopoverTrigger>
-                            <PopoverContent 
-                              align="start" 
-                              className="w-[300px] p-0 overflow-hidden" 
+                            <PopoverContent
+                              align="start"
+                              className="w-[300px] p-0 overflow-hidden"
                               onClick={(ev) => ev.stopPropagation()}
                             >
                               {e.coverImageUrl ? (
@@ -1568,11 +1693,11 @@ export default function ContentEngagementPage() {
                               <div className="p-4 space-y-3">
                                 <div>
                                   <div className="flex items-center justify-between mb-1">
-                                    <Badge 
-                                      variant={e.eventStatus === 'pending' ? "secondary" : "default"} 
+                                    <Badge
+                                      variant={e.eventStatus === 'pending' ? "secondary" : "default"}
                                       className={
-                                        e.eventStatus === 'pending' 
-                                          ? 'bg-amber-100 text-amber-800 hover:bg-amber-100 border-amber-200' 
+                                        e.eventStatus === 'pending'
+                                          ? 'bg-amber-100 text-amber-800 hover:bg-amber-100 border-amber-200'
                                           : e.rawStatus === 'REJECTED'
                                             ? 'bg-red-100 text-red-800 hover:bg-red-100 border-red-200'
                                             : 'bg-green-100 text-green-800 hover:bg-green-100 border-green-200'
@@ -1838,7 +1963,7 @@ export default function ContentEngagementPage() {
                           <td className="p-4">
                             <div className="flex flex-col">
                               <span className="font-medium text-xs">
-                                {resource.uploaderFirstName || resource.uploaderLastName 
+                                {resource.uploaderFirstName || resource.uploaderLastName
                                   ? `${resource.uploaderFirstName || ""} ${resource.uploaderLastName || ""}`.trim()
                                   : "Alumni User"}
                               </span>
@@ -1944,7 +2069,7 @@ export default function ContentEngagementPage() {
                           <td className="p-4">
                             <div className="flex flex-col">
                               <span className="font-medium text-xs">
-                                {resource.uploaderFirstName || resource.uploaderLastName 
+                                {resource.uploaderFirstName || resource.uploaderLastName
                                   ? `${resource.uploaderFirstName || ""} ${resource.uploaderLastName || ""}`.trim()
                                   : "Alumni User"}
                               </span>
@@ -2012,6 +2137,97 @@ export default function ContentEngagementPage() {
           </Card>
         </TabsContent>
        </Tabs>
+
+      {/* News Details Modal */}
+      <Dialog open={newsDetailsDialogOpen} onOpenChange={setNewsDetailsDialogOpen}>
+        <DialogContent className="sm:max-w-[600px] max-h-[85vh] overflow-y-auto">
+          {selectedNewsItem && (
+            <>
+              <DialogHeader className="space-y-3">
+                {selectedNewsItem.coverImageUrl || selectedNewsItem.coverImage ? (
+                  <div className="w-full h-56 rounded-md overflow-hidden bg-muted">
+                    <img
+                      src={selectedNewsItem.coverImageUrl || selectedNewsItem.coverImage}
+                      alt={selectedNewsItem.title}
+                      className="w-full h-full object-cover"
+                    />
+                  </div>
+                ) : (
+                  <div className="w-full h-32 bg-gradient-to-br from-red-500/10 to-blue-500/10 flex items-center justify-center rounded-md text-muted-foreground text-sm border">
+                    <Newspaper className="h-10 w-10 opacity-40" />
+                  </div>
+                )}
+
+                <div className="flex items-center justify-between">
+                  <Badge variant="secondary" className="uppercase font-bold tracking-wider text-[10px]">
+                    {selectedNewsItem.category || "Official"}
+                  </Badge>
+                  <span className="text-xs text-muted-foreground">{selectedNewsItem.views.toLocaleString()} reads</span>
+                </div>
+
+                <DialogTitle className="text-2xl font-bold tracking-tight leading-tight">
+                  {selectedNewsItem.title}
+                </DialogTitle>
+
+                <div className="flex items-center gap-3 pt-2 text-xs text-muted-foreground">
+                  <div className="flex items-center gap-1.5">
+                    {selectedNewsItem.authorImageUrl || selectedNewsItem.authorImage ? (
+                      <img
+                        src={selectedNewsItem.authorImageUrl || selectedNewsItem.authorImage}
+                        alt="Author"
+                        className="h-6 w-6 rounded-full object-cover border"
+                      />
+                    ) : (
+                      <div className="h-6 w-6 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-[10px]">
+                        A
+                      </div>
+                    )}
+                    <span className="font-semibold text-foreground">Official Publisher</span>
+                  </div>
+                  <span>•</span>
+                  <span>{format(new Date(selectedNewsItem.publishedAt), "PPP p")}</span>
+                </div>
+              </DialogHeader>
+
+              <div className="space-y-4 py-4 text-sm text-foreground/90 leading-relaxed whitespace-pre-line border-t border-b">
+                {selectedNewsItem.content}
+              </div>
+
+              {/* Inline Post Images */}
+              {selectedNewsItem.postImages && selectedNewsItem.postImages.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold uppercase text-muted-foreground">Article Images</p>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                    {selectedNewsItem.postImages.map((imgUrl, idx) => (
+                      <div key={idx} className="h-28 rounded-md overflow-hidden bg-muted border">
+                        <img
+                          src={imgUrl}
+                          alt={`Article inline ${idx + 1}`}
+                          className="w-full h-full object-cover hover:scale-105 transition-transform duration-300 cursor-pointer"
+                          onClick={() => window.open(imgUrl, "_blank")}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <DialogFooter className="pt-2">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setNewsDetailsDialogOpen(false);
+                    setSelectedNewsItem(null);
+                  }}
+                  className="w-full sm:w-auto"
+                >
+                  Close
+                </Button>
+              </DialogFooter>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
      </div>
 
      <Dialog open={eventDetailsOpen} onOpenChange={setEventDetailsOpen}>
@@ -2220,7 +2436,7 @@ export default function ContentEngagementPage() {
          </DialogFooter>
        </DialogContent>
      </Dialog>
-     
+
      {/* ANALYTICS DIALOG */}
      <Dialog open={analyticsDialogOpen} onOpenChange={setAnalyticsDialogOpen}>
        <DialogTrigger asChild>
